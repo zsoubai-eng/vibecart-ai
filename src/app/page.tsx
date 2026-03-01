@@ -34,9 +34,11 @@ interface PipelineState {
 
 // ── Helpers ───────────────────────────────────────────────────────
 function parseSection(text: string, heading: string): string {
-  const regex = new RegExp(`###[^\n]*${heading}[^\n]*\n([\s\S]*?)(?=###|$)`, 'i');
+  // Match ### headings containing the keyword (handles emojis, symbols, whitespace)
+  const regex = new RegExp(`###[^\\n]*${heading}[^\\n]*\\n([\\s\\S]*?)(?=###|$)`, 'i');
   const match = text.match(regex);
-  return match ? match[1].trim() : '';
+  if (!match) return '';
+  return match[1].trim();
 }
 
 function formatMarkdown(text: string) {
