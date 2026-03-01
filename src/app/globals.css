@@ -1079,3 +1079,184 @@ main {
         opacity: 0;
     }
 }
+
+/* ══════════════════════════════════════════════════════════
+   VOXTRAL VOICE INPUT
+   ══════════════════════════════════════════════════════════ */
+
+/* Mode toggle pill */
+.input-mode-toggle {
+    display: flex;
+    gap: 0.375rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem;
+    margin-bottom: 1.25rem;
+    align-self: center;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.mode-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.mode-btn-active {
+    background: rgba(139, 92, 246, 0.18);
+    color: var(--primary-light);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.mode-btn-voice.mode-btn-active {
+    background: rgba(139, 92, 246, 0.18);
+}
+
+.mode-badge-new {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+    color: white;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-left: 0.2rem;
+}
+
+/* Voice record area */
+.voice-record-area {
+    width: 100%;
+    min-height: 72px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.record-hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-style: italic;
+    text-align: center;
+    line-height: 1.5;
+}
+
+.transcribing-state {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--primary-light);
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+/* Transcript display */
+.transcript-display {
+    width: 100%;
+    position: relative;
+}
+
+.transcript-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #10b981;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+}
+
+.transcript-text {
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    font-style: italic;
+}
+
+.transcript-clear {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+    border-radius: 6px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.transcript-clear:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+/* Mic button */
+.btn-mic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    border: 1.5px solid rgba(139, 92, 246, 0.4);
+    background: rgba(139, 92, 246, 0.08);
+    color: var(--primary-light);
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    margin-bottom: 0.75rem;
+}
+
+.btn-mic:hover:not(:disabled) {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.6);
+    transform: translateY(-1px);
+}
+
+.btn-mic-stop {
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+.btn-mic-stop:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.15) !important;
+    border-color: rgba(239, 68, 68, 0.7) !important;
+}
+
+@keyframes mic-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    }
+}

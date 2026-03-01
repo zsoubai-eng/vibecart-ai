@@ -4,7 +4,8 @@ import { useState, useRef, useCallback } from 'react';
 import {
   Camera, Sparkles, Zap, Brain, Loader2,
   Volume2, VolumeX, CheckCircle, Package,
-  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film, Eye
+  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film, Eye,
+  Mic, MicOff, Link
 } from 'lucide-react';
 import './globals.css';
 
@@ -121,6 +122,13 @@ export default function Home() {
   const [pipeline, setPipeline] = useState<PipelineState>({
     vision: 'idle', copy: 'idle', refine: 'idle', complete: false, totalTokens: 0,
   });
+  // ── Voxtral Voice Input State ───────────────────────────────────
+  const [inputMode, setInputMode] = useState<'url' | 'voice'>('url');
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -169,9 +177,54 @@ export default function Home() {
     }
   }, []);
 
+  // ── Voxtral Recording ─────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        await transcribeBlob(blob, mimeType);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setTranscript('');
+    } catch {
+      setError('Microphone access denied. Please allow microphone permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
+
+  const transcribeBlob = async (blob: Blob, mimeType: string) => {
+    setTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', blob, `recording.${mimeType.includes('webm') ? 'webm' : 'mp4'}`);
+      const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.transcript) setTranscript(data.transcript);
+      else throw new Error(data.error || 'Transcription failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Voxtral transcription failed');
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
   // ── Streaming Analyze ─────────────────────────────────────────
   const scanVibe = async () => {
-    if (!imageUrl) return;
+    const hasUrl = inputMode === 'url' && imageUrl;
+    const hasVoice = inputMode === 'voice' && transcript;
+    if (!hasUrl && !hasVoice) return;
     setLoading(true);
     setError('');
     setResults(null);
@@ -179,14 +232,17 @@ export default function Home() {
     setStreamCopy('');
     setStreamRefine('');
     setVibePreview(null);
-    setPreviewImg(imageUrl);
+    if (inputMode === 'url') setPreviewImg(imageUrl);
     setPipeline({ vision: 'idle', copy: 'idle', refine: 'idle', complete: false, totalTokens: 0 });
 
     try {
       const response = await fetch('/api/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl }),
+        body: JSON.stringify({
+          imageUrl: inputMode === 'url' ? imageUrl : '',
+          productDescription: inputMode === 'voice' ? transcript : undefined,
+        }),
       });
 
       if (!response.body) throw new Error('No response stream');
@@ -198,17 +254,12 @@ export default function Home() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
-
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            try {
-              const event = JSON.parse(line.slice(6));
-              handlePipelineEvent(event);
-            } catch { /* skip malformed */ }
+            try { handlePipelineEvent(JSON.parse(line.slice(6))); } catch { /* skip */ }
           }
         }
       }
@@ -302,29 +353,95 @@ export default function Home() {
 
           {/* INPUT CARD */}
           <div className="upload-card">
-            {previewImg && !loading && results && (
+            {previewImg && !loading && results && inputMode === 'url' && (
               <div className="preview-image-wrap">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={previewImg} alt="Product" className="preview-image" onError={() => setPreviewImg('')} />
               </div>
             )}
-            <div className="upload-icon-wrap">
-              <Camera size={26} color="#a78bfa" strokeWidth={1.5} />
-            </div>
-            <h2>Analyze Product Aesthetic</h2>
-            <p>Paste a direct image URL from any product listing</p>
 
-            <div className="input-wrap">
-              <input
-                type="text"
-                className="url-input"
-                placeholder="https://example.com/product-image.jpg"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !loading && scanVibe()}
-              />
+            {/* MODE TOGGLE */}
+            <div className="input-mode-toggle">
+              <button
+                className={`mode-btn ${inputMode === 'url' ? 'mode-btn-active' : ''}`}
+                onClick={() => { setInputMode('url'); setError(''); }}
+              >
+                <Link size={13} /> Image URL
+              </button>
+              <button
+                className={`mode-btn ${inputMode === 'voice' ? 'mode-btn-active mode-btn-voice' : ''}`}
+                onClick={() => { setInputMode('voice'); setError(''); }}
+              >
+                <Mic size={13} /> Voice Describe
+                <span className="mode-badge-new">Voxtral</span>
+              </button>
             </div>
-            <button className="btn-primary" onClick={scanVibe} disabled={loading || !imageUrl}>
+
+            {inputMode === 'url' ? (
+              <>
+                <div className="upload-icon-wrap">
+                  <Camera size={26} color="#a78bfa" strokeWidth={1.5} />
+                </div>
+                <h2>Analyze Product Aesthetic</h2>
+                <p>Paste a direct image URL from any product listing</p>
+                <div className="input-wrap">
+                  <input
+                    type="text"
+                    className="url-input"
+                    placeholder="https://example.com/product-image.jpg"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !loading && scanVibe()}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="upload-icon-wrap" style={{ background: isRecording ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.1)', borderColor: isRecording ? 'rgba(239,68,68,0.4)' : undefined }}>
+                  {isRecording ? <MicOff size={26} color="#ef4444" /> : <Mic size={26} color="#a78bfa" strokeWidth={1.5} />}
+                </div>
+                <h2>Describe Your Product</h2>
+                <p>Speak naturally — Voxtral AI transcribes your description in real-time</p>
+
+                <div className="voice-record-area">
+                  {transcript ? (
+                    <div className="transcript-display">
+                      <div className="transcript-label">✅ Voxtral Transcript</div>
+                      <div className="transcript-text">{transcript}</div>
+                      <button className="transcript-clear" onClick={() => setTranscript('')}>× Clear</button>
+                    </div>
+                  ) : transcribing ? (
+                    <div className="transcribing-state">
+                      <Loader2 size={18} className="spinner" color="#a78bfa" />
+                      <span>Voxtral transcribing…</span>
+                    </div>
+                  ) : (
+                    <div className="record-hint">
+                      {isRecording ? '🔴 Recording… click to stop' : 'Example: "A luxury black watch with gold details and minimalist packaging"'}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  className={`btn-mic ${isRecording ? 'btn-mic-stop' : ''}`}
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={transcribing}
+                >
+                  {isRecording ? (
+                    <><MicOff size={18} /> Stop Recording</>
+                  ) : (
+                    <><Mic size={18} /> {transcript ? 'Re-record' : 'Start Recording'}</>
+                  )}
+                </button>
+              </>
+            )}
+
+            <button
+              className="btn-primary"
+              onClick={scanVibe}
+              disabled={loading || (inputMode === 'url' ? !imageUrl : !transcript)}
+              style={{ marginTop: inputMode === 'voice' ? '0.75rem' : undefined }}
+            >
               {loading ? (
                 <><Loader2 size={18} className="spinner" /> Streaming AI pipeline…</>
               ) : (

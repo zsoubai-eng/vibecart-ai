@@ -1,15 +1,30 @@
 import { Mistral } from '@mistralai/mistralai';
 import { NextRequest } from 'next/server';
 
-// ── SSE Helpers ──────────────────────────────────────────────────
+// ── SSE Helpers ───────────────────────────────────────────────────────────────
 function sseEvent(data: object): Uint8Array {
     return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-function copyPrompt(vibe: {
+// ── VibeData type shared between both pipeline paths ──────────────────────────
+type VibeData = {
     aesthetic: string; mood: string; keywords: string[];
-    demographic: string; emotion: string; category: string;
-}): string {
+    demographic: string; emotion: string; vibeScore: number;
+    palette: string[]; category: string;
+};
+
+const VIBE_FALLBACK: VibeData = {
+    aesthetic: 'Modern and versatile design', mood: 'Premium',
+    keywords: ['Stylish', 'Quality', 'Functional', 'Modern', 'Elegant'],
+    demographic: 'Style-conscious adults aged 25–40 who value craftsmanship',
+    emotion: 'Inspired, confident, elevated',
+    vibeScore: 78,
+    palette: ['#1a1a2e', '#2d2d44', '#8b5cf6', '#e2d4f0'],
+    category: 'Lifestyle Product',
+};
+
+// ── Copy prompt ───────────────────────────────────────────────────────────────
+function copyPrompt(vibe: VibeData): string {
     return `Product Brand DNA:
 - Aesthetic: ${vibe.aesthetic}
 - Mood: ${vibe.mood}
@@ -46,13 +61,13 @@ Description: [max 125 chars — urgency + benefit]
 One sentence. Why this product is irreplaceable.`;
 }
 
-// ── STREAMING PIPELINE ROUTE ──────────────────────────────────────
+// ── STREAMING PIPELINE ROUTE ──────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
-    const { imageUrl } = await request.json();
+    const { imageUrl, productDescription } = await request.json();
 
-    if (!imageUrl) {
+    if (!imageUrl && !productDescription) {
         return new Response(
-            `data: ${JSON.stringify({ stage: 'error', error: 'Image URL is required' })}\n\n`,
+            `data: ${JSON.stringify({ stage: 'error', error: 'Image URL or product description is required' })}\n\n`,
             { status: 400, headers: { 'Content-Type': 'text/event-stream' } }
         );
     }
@@ -60,93 +75,94 @@ export async function POST(request: NextRequest) {
     const readableStream = new ReadableStream({
         async start(controller) {
             const push = (data: object) => {
-                try { controller.enqueue(sseEvent(data)); } catch { /* closed */ }
+                try { controller.enqueue(sseEvent(data)); } catch { /* stream closed */ }
             };
 
             try {
-                // ── Key fallback chain ──────────────────────────────────
+                // ── API Key ──────────────────────────────────────────────────
                 const keys = [
                     process.env.MISTRAL_API_KEY_HACKATHON,
                     process.env.MISTRAL_API_KEY,
                 ].filter(Boolean) as string[];
 
-                if (!keys.length) throw new Error('No API keys configured. Set MISTRAL_API_KEY in .env.local');
-
-                // Use first available key — Mistral client instantiation always succeeds
+                if (!keys.length) throw new Error('No API key configured. Set MISTRAL_API_KEY in .env.local');
                 const client = new Mistral({ apiKey: keys[0] });
-                console.log(`[stream] Using key: ${keys[0]?.slice(0, 8)}...`);
 
-                // ══════════════════════════════════════════════════════════
-                // STAGE 1 — Pixtral Large Vision (Structured JSON output)
-                // ══════════════════════════════════════════════════════════
-                push({ stage: 'vision', status: 'running', message: 'Pixtral Large reading visual DNA…' });
+                // ══════════════════════════════════════════════════════════════
+                // STAGE 1 — Vision: Pixtral (image URL) OR Mistral (voice text)
+                // ══════════════════════════════════════════════════════════════
+                let vibeData: VibeData;
 
-                const vibeResponse = await client.chat.complete({
-                    model: 'pixtral-large-latest',
-                    messages: [
-                        {
+                if (imageUrl) {
+                    // ── Image mode: Pixtral Large ────────────────────────────
+                    push({ stage: 'vision', status: 'running', message: 'Pixtral Large reading visual DNA…' });
+
+                    const vibeResponse = await client.chat.complete({
+                        model: 'pixtral-large-latest',
+                        messages: [{
                             role: 'user',
                             content: [
                                 {
                                     type: 'text',
                                     text: `You are an elite brand strategist and visual psychologist.
-
 Analyze this product image in extreme detail. Return ONLY a valid JSON object:
-{
-  "aesthetic": "One precise sentence describing the dominant visual aesthetic",
-  "mood": "Single evocative word (e.g. Luxurious, Fierce, Cozy, Minimal, Playful)",
-  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-  "demographic": "One sentence about the target buyer: age, lifestyle, values",
-  "emotion": "Three comma-separated emotions this product evokes",
-  "vibeScore": 88,
-  "palette": ["#000000", "#FFFFFF", "#AABBCC", "#DDEEFF"],
-  "category": "Two-word product category"
-}
-
-vibeScore (0-100): commercial marketability score.
-palette: 4 real hex codes matching or complementing the product.
-Return ONLY the JSON object. No markdown, no explanation.`,
+{"aesthetic":"...","mood":"...","keywords":["k1","k2","k3","k4","k5"],"demographic":"...","emotion":"...","vibeScore":88,"palette":["#HEX1","#HEX2","#HEX3","#HEX4"],"category":"..."}
+vibeScore (0-100): commercial marketability. palette: 4 real hex codes. Return ONLY JSON.`,
                                 },
                                 {
-                                    // Mistral Pixtral image format
                                     type: 'image_url',
                                     imageUrl: { url: imageUrl },
                                 } as { type: 'image_url'; imageUrl: { url: string } },
                             ],
-                        },
-                    ],
-                });
-                console.log('[stream] Pixtral response received');
+                        }],
+                    });
 
-                // Parse structured JSON (with fallback)
-                type VibeData = {
-                    aesthetic: string; mood: string; keywords: string[];
-                    demographic: string; emotion: string; vibeScore: number;
-                    palette: string[]; category: string;
-                };
+                    try {
+                        const raw = vibeResponse.choices?.[0]?.message?.content as string;
+                        vibeData = JSON.parse(raw.replace(/```json|```/g, '').trim());
+                    } catch {
+                        vibeData = VIBE_FALLBACK;
+                    }
+                } else {
+                    // ── Voice mode: Mistral Large from Voxtral transcript ────
+                    push({ stage: 'vision', status: 'running', message: 'Mistral Large analyzing voice description…' });
 
-                let vibeData: VibeData;
-                try {
-                    const raw = vibeResponse.choices?.[0]?.message?.content as string;
-                    const cleaned = raw.replace(/```json|```/g, '').trim();
-                    vibeData = JSON.parse(cleaned);
-                } catch {
-                    vibeData = {
-                        aesthetic: 'Modern and versatile design', mood: 'Premium',
-                        keywords: ['Stylish', 'Quality', 'Functional', 'Modern', 'Elegant'],
-                        demographic: 'Style-conscious adults aged 25-40 who value craftsmanship',
-                        emotion: 'Inspired, confident, elevated',
-                        vibeScore: 78,
-                        palette: ['#1a1a2e', '#2d2d44', '#8b5cf6', '#e2d4f0'],
-                        category: 'Lifestyle Product',
-                    };
+                    const textVibeResponse = await client.chat.complete({
+                        model: 'mistral-large-latest',
+                        messages: [{
+                            role: 'user',
+                            content: `You are an elite brand strategist. Based on this product voice description, create brand DNA JSON:
+
+Product: "${productDescription}"
+
+Return ONLY a valid JSON (no markdown):
+{"aesthetic":"One sentence visual aesthetic","mood":"Single evocative word","keywords":["k1","k2","k3","k4","k5"],"demographic":"Target buyer one sentence","emotion":"Three comma-separated emotions","vibeScore":82,"palette":["#HEX1","#HEX2","#HEX3","#HEX4"],"category":"Two-word category"}
+
+Infer the palette from the product's implied color story. vibeScore 0-100: commercial appeal.`,
+                        }],
+                    });
+
+                    try {
+                        const raw = textVibeResponse.choices?.[0]?.message?.content as string;
+                        vibeData = JSON.parse(raw.replace(/```json|```/g, '').trim());
+                    } catch {
+                        vibeData = {
+                            aesthetic: 'Elegant and refined', mood: 'Luxurious',
+                            keywords: ['Premium', 'Exclusive', 'Minimal', 'Refined', 'Timeless'],
+                            demographic: 'Discerning adults aged 28–45',
+                            emotion: 'Desire, exclusivity, pride',
+                            vibeScore: 82,
+                            palette: ['#0a0a0a', '#c9a84c', '#f5f5f0', '#2c2c2c'],
+                            category: 'Luxury Accessory',
+                        };
+                    }
                 }
 
                 push({ stage: 'vision', status: 'done', data: vibeData });
 
-                // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════════
                 // STAGE 2 — Mistral Large: 6-Platform Copy (STREAMING)
-                // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════════
                 push({ stage: 'copy', status: 'running', message: 'Mistral Large generating 6-platform copy suite…' });
 
                 let fullCopy = '';
@@ -157,7 +173,7 @@ Return ONLY the JSON object. No markdown, no explanation.`,
                     messages: [
                         {
                             role: 'system',
-                            content: `You are an elite viral copywriter who has launched campaigns for Apple, Glossier, and Supreme. 
+                            content: `You are an elite viral copywriter who has launched campaigns for Apple, Glossier, and Supreme.
 You understand that great copy sells a feeling, not a feature.
 Your output is always structured, emotionally resonant, and conversion-focused.
 You write with precision — every word earns its place.`,
@@ -177,9 +193,9 @@ You write with precision — every word earns its place.`,
 
                 push({ stage: 'copy', status: 'done', tokens: copyTokens });
 
-                // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════════
                 // STAGE 3 — Mistral Large: Self-Refinement (STREAMING)
-                // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════════
                 push({ stage: 'refine', status: 'running', message: 'Creative Director self-refining viral hooks…' });
 
                 let refinedCopy = '';
@@ -228,7 +244,7 @@ Format EXACTLY as:
 
                 push({ stage: 'refine', status: 'done', tokens: refineTokens });
 
-                // ── Extract voice text from upgraded hooks ──────────────
+                // ── Extract voice text ────────────────────────────────────────
                 const hookSection = refinedCopy.match(/\*\*Upgraded Hooks:\*\*[\s\S]*?(?=\n\n\*\*|$)/);
                 const upgradedHooks = hookSection ? hookSection[0] : refinedCopy.slice(-400);
                 const hookLines = upgradedHooks.split('\n').filter(l => /^\d\./.test(l.trim()));
@@ -236,18 +252,13 @@ Format EXACTLY as:
                     ? hookLines.map(l => l.replace(/^\d\.\s*/, '').replace(/\[|\]/g, '').trim()).join('. ')
                     : fullCopy.slice(0, 300);
 
-                // ══════════════════════════════════════════════════════════
-                // STAGE COMPLETE — Send full results
-                // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════════
+                // COMPLETE
+                // ══════════════════════════════════════════════════════════════
                 push({
                     stage: 'complete',
                     totalTokens: copyTokens + refineTokens,
-                    data: {
-                        vibeData,
-                        marketingCopy: fullCopy,
-                        upgradedHooks,
-                        voiceText,
-                    },
+                    data: { vibeData, marketingCopy: fullCopy, upgradedHooks, voiceText },
                 });
 
             } catch (error) {
@@ -263,7 +274,7 @@ Format EXACTLY as:
             'Content-Type': 'text/event-stream; charset=utf-8',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',     // Disable nginx buffering
+            'X-Accel-Buffering': 'no',
             'X-Content-Type-Options': 'nosniff',
         },
     });
