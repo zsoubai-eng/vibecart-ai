@@ -1,16 +1,26 @@
 import { Mistral } from '@mistralai/mistralai';
 import { NextRequest } from 'next/server';
 
-// ── SSE Helpers ───────────────────────────────────────────────────────────────
+// ── SSE Helper ────────────────────────────────────────────────────────────────
 function sseEvent(data: object): Uint8Array {
     return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-// ── VibeData type shared between both pipeline paths ──────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 type VibeData = {
     aesthetic: string; mood: string; keywords: string[];
     demographic: string; emotion: string; vibeScore: number;
     palette: string[]; category: string;
+};
+
+type ProfitData = {
+    suggestedPrice: number;
+    estimatedCost: number;
+    estimatedMargin: number;
+    dropshipScore: number;
+    dropshipVerdict: string;
+    pricingRationale: string;
+    platformFit: string[];
 };
 
 const VIBE_FALLBACK: VibeData = {
@@ -23,7 +33,7 @@ const VIBE_FALLBACK: VibeData = {
     category: 'Lifestyle Product',
 };
 
-// ── Copy prompt ───────────────────────────────────────────────────────────────
+// ── Power-Up 1: 3-Style Hook Prompt (from X_CONTENT_MACHINE Stark Templates) ─
 function copyPrompt(vibe: VibeData): string {
     return `Product Brand DNA:
 - Aesthetic: ${vibe.aesthetic}
@@ -44,8 +54,20 @@ High-converting title (max 200 chars, keyword-rich, structured for search)
 ### 📖 Vibe Description
 Exactly 3 sentences. Each sells the lifestyle, not the product. Make the reader feel something deep.
 
-### 🎣 TikTok / Reels Hooks
-Three ultra-punchy hooks (max 8 words each, scroll-stopping, emotionally charged):
+### 🎣 TikTok / Reels Hooks — 3 STYLES
+Generate 3 hooks per style (max 8 words each). Emotionally charged, scroll-stopping:
+
+**📰 Informative Style** (educate + intrigue):
+1. 
+2.
+3.
+
+**🔥 Controversial Style** (pattern interrupt + opinion):
+1. 
+2.
+3.
+
+**💎 Value-Add Style** (clear benefit + desire):
 1. 
 2.
 3.
@@ -59,6 +81,37 @@ Description: [max 125 chars — urgency + benefit]
 
 ### 💡 Unique Selling Point
 One sentence. Why this product is irreplaceable.`;
+}
+
+// ── Power-Up 2: Stark Analyst Refine Prompt (from X_CONTENT_MACHINE) ─────────
+function refinePrompt(vibe: VibeData, fullCopy: string): string {
+    return `You are the Stark Analyst — a blend of Elon Musk's first principles, Steve Jobs' aesthetic obsession, and McKinsey's data precision.
+
+You just generated this brand copy for a ${vibe.mood.toLowerCase()} ${vibe.category}:
+
+${fullCopy}
+
+YOUR MISSION: Pick the single BEST hook from each of the 3 styles (Informative, Controversial, Value-Add).
+Then rewrite all 3 chosen hooks to be 40% more viral — more surprising, more emotionally resonant, more scroll-stopping.
+
+Rules:
+- Max 8 words per hook
+- Use pattern interrupts and curiosity gaps
+- Hit the emotion of "${vibe.emotion}"
+- Think: what would stop someone cold while doom-scrolling at 2AM?
+
+Format EXACTLY as:
+
+**Stark Critique:**
+[One sentence per style: what was strong, what failed]
+
+**🔥 Final Upgraded Hooks:**
+📰 Informative: [rewritten hook]
+🔥 Controversial: [rewritten hook]
+💎 Value-Add: [rewritten hook]
+
+**💡 Stark Verdict:**
+[One bold sentence: what is this product's single killer angle?]`;
 }
 
 // ── STREAMING PIPELINE ROUTE ──────────────────────────────────────────────────
@@ -89,14 +142,12 @@ export async function POST(request: NextRequest) {
                 const client = new Mistral({ apiKey: keys[0] });
 
                 // ══════════════════════════════════════════════════════════════
-                // STAGE 1 — Vision: Pixtral (image URL) OR Mistral (voice text)
+                // STAGE 1 — Vision: Pixtral (image) OR Mistral (voice text)
                 // ══════════════════════════════════════════════════════════════
                 let vibeData: VibeData;
 
                 if (imageUrl) {
-                    // ── Image mode: Pixtral Large ────────────────────────────
                     push({ stage: 'vision', status: 'running', message: 'Pixtral Large reading visual DNA…' });
-
                     const vibeResponse = await client.chat.complete({
                         model: 'pixtral-large-latest',
                         messages: [{
@@ -116,17 +167,12 @@ vibeScore (0-100): commercial marketability. palette: 4 real hex codes. Return O
                             ],
                         }],
                     });
-
                     try {
                         const raw = vibeResponse.choices?.[0]?.message?.content as string;
                         vibeData = JSON.parse(raw.replace(/```json|```/g, '').trim());
-                    } catch {
-                        vibeData = VIBE_FALLBACK;
-                    }
+                    } catch { vibeData = VIBE_FALLBACK; }
                 } else {
-                    // ── Voice mode: Mistral Large from Voxtral transcript ────
                     push({ stage: 'vision', status: 'running', message: 'Mistral Large analyzing voice description…' });
-
                     const textVibeResponse = await client.chat.complete({
                         model: 'mistral-large-latest',
                         messages: [{
@@ -141,7 +187,6 @@ Return ONLY a valid JSON (no markdown):
 Infer the palette from the product's implied color story. vibeScore 0-100: commercial appeal.`,
                         }],
                     });
-
                     try {
                         const raw = textVibeResponse.choices?.[0]?.message?.content as string;
                         vibeData = JSON.parse(raw.replace(/```json|```/g, '').trim());
@@ -161,9 +206,9 @@ Infer the palette from the product's implied color story. vibeScore 0-100: comme
                 push({ stage: 'vision', status: 'done', data: vibeData });
 
                 // ══════════════════════════════════════════════════════════════
-                // STAGE 2 — Mistral Large: 6-Platform Copy (STREAMING)
+                // STAGE 2 — Mistral Large: 3-Style Copy Suite (STREAMING)
                 // ══════════════════════════════════════════════════════════════
-                push({ stage: 'copy', status: 'running', message: 'Mistral Large generating 6-platform copy suite…' });
+                push({ stage: 'copy', status: 'running', message: 'Mistral Large generating 3-style hook suite + 6 platforms…' });
 
                 let fullCopy = '';
                 let copyTokens = 0;
@@ -194,9 +239,9 @@ You write with precision — every word earns its place.`,
                 push({ stage: 'copy', status: 'done', tokens: copyTokens });
 
                 // ══════════════════════════════════════════════════════════════
-                // STAGE 3 — Mistral Large: Self-Refinement (STREAMING)
+                // STAGE 3 — Stark Analyst Refinement (STREAMING)
                 // ══════════════════════════════════════════════════════════════
-                push({ stage: 'refine', status: 'running', message: 'Creative Director self-refining viral hooks…' });
+                push({ stage: 'refine', status: 'running', message: 'Stark Analyst upgrading hooks — First Principles mode…' });
 
                 let refinedCopy = '';
                 let refineTokens = 0;
@@ -206,30 +251,9 @@ You write with precision — every word earns its place.`,
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a ruthless creative director at the world's most awarded ad agency.
-Your standard: if it doesn't stop the scroll in 0.3 seconds, it fails.
-You critique precisely and rewrite surgically. No fluff. All impact.`,
+                            content: `You are the Stark Analyst — a ruthless blend of Elon Musk's first principles thinking, Steve Jobs' premium aesthetics, and McKinsey's data precision. Your standard: if it doesn't stop the scroll in 0.3 seconds, it fails. No fluff. All impact.`,
                         },
-                        {
-                            role: 'user',
-                            content: `You just wrote this copy for a ${vibeData.mood.toLowerCase()} ${vibeData.category}:
-
-${fullCopy}
-
-Your job: critique the 3 TikTok/Reels hooks. What specifically makes each one strong or weak?
-Then rewrite ALL 3 hooks to be 30% more viral — more surprising, more emotional, more scroll-stopping.
-
-Rules: max 8 words per hook. Use pattern interrupts. Create curiosity gaps. Hit the emotion of "${vibeData.emotion}".
-
-Format EXACTLY as:
-**Critique:**
-[your brutal critique of each hook]
-
-**Upgraded Hooks:**
-1. [rewritten hook]
-2. [rewritten hook]
-3. [rewritten hook]`,
-                        },
+                        { role: 'user', content: refinePrompt(vibeData, fullCopy) },
                     ],
                 });
 
@@ -244,12 +268,74 @@ Format EXACTLY as:
 
                 push({ stage: 'refine', status: 'done', tokens: refineTokens });
 
+                // ══════════════════════════════════════════════════════════════
+                // STAGE 4 — Dropship Profit Calculator (Power-Up from dropship-intelligence)
+                // ══════════════════════════════════════════════════════════════
+                push({ stage: 'profit', status: 'running', message: 'CFO Formula calculating dropship viability & pricing…' });
+
+                let profitData: ProfitData = {
+                    suggestedPrice: 0, estimatedCost: 0, estimatedMargin: 0,
+                    dropshipScore: 0, dropshipVerdict: '', pricingRationale: '', platformFit: [],
+                };
+
+                try {
+                    const profitResponse = await client.chat.complete({
+                        model: 'mistral-large-latest',
+                        messages: [{
+                            role: 'user',
+                            content: `You are a CFO and e-commerce dropshipping expert. Analyze this product for dropshipping viability.
+
+Product DNA:
+- Category: ${vibeData.category}
+- Keywords: ${vibeData.keywords.join(', ')}
+- Aesthetic: ${vibeData.aesthetic}
+- Target Buyer: ${vibeData.demographic}
+- Vibe Score: ${vibeData.vibeScore}/100
+- Mood: ${vibeData.mood}
+
+Apply the CFO Formula: SuggestedRetailPrice = (EstimatedAliExpressCost × 3.5) rounded to nearest .99
+Dropship Score (0-10): based on margin potential, impulse buy factor, shipping weight, competition level, and vibe score.
+
+Return ONLY valid JSON:
+{
+  "suggestedPrice": 49.99,
+  "estimatedCost": 12.50,
+  "estimatedMargin": 67,
+  "dropshipScore": 8.2,
+  "dropshipVerdict": "🔥 High Potential" | "✅ Solid Pick" | "⚠️ Competitive Market" | "❌ Low Margin",
+  "pricingRationale": "One sentence explaining the price point",
+  "platformFit": ["TikTok Shop", "Instagram Shopping", "Amazon FBA"]
+}
+
+dropshipVerdict rules: score ≥ 8 = "🔥 High Potential", score ≥ 6 = "✅ Solid Pick", score ≥ 4 = "⚠️ Competitive Market", else "❌ Low Margin"
+platformFit: 2-3 best sales channels for this product. Return ONLY JSON.`,
+                        }],
+                    });
+
+                    const raw = profitResponse.choices?.[0]?.message?.content as string;
+                    profitData = JSON.parse(raw.replace(/```json|```/g, '').trim());
+                } catch {
+                    // Fallback profit data
+                    const basePrice = Math.round(vibeData.vibeScore * 0.8 + 20);
+                    profitData = {
+                        suggestedPrice: basePrice - 0.01,
+                        estimatedCost: Math.round(basePrice / 3.5 * 100) / 100,
+                        estimatedMargin: 65,
+                        dropshipScore: Math.round(vibeData.vibeScore / 12),
+                        dropshipVerdict: vibeData.vibeScore >= 80 ? '🔥 High Potential' : '✅ Solid Pick',
+                        pricingRationale: `Priced for ${vibeData.demographic.split(' ').slice(0, 4).join(' ')} with strong impulse-buy potential.`,
+                        platformFit: ['TikTok Shop', 'Instagram Shopping', 'Amazon FBA'],
+                    };
+                }
+
+                push({ stage: 'profit', status: 'done', data: profitData });
+
                 // ── Extract voice text ────────────────────────────────────────
-                const hookSection = refinedCopy.match(/\*\*Upgraded Hooks:\*\*[\s\S]*?(?=\n\n\*\*|$)/);
-                const upgradedHooks = hookSection ? hookSection[0] : refinedCopy.slice(-400);
-                const hookLines = upgradedHooks.split('\n').filter(l => /^\d\./.test(l.trim()));
+                const hookSection = refinedCopy.match(/🔥 Final Upgraded Hooks[\s\S]*?(?=\n\n\*\*|$)/);
+                const upgradedHooks = hookSection ? hookSection[0] : refinedCopy.slice(-600);
+                const hookLines = upgradedHooks.split('\n').filter(l => /[📰🔥💎]/.test(l));
                 const voiceText = hookLines.length >= 2
-                    ? hookLines.map(l => l.replace(/^\d\.\s*/, '').replace(/\[|\]/g, '').trim()).join('. ')
+                    ? hookLines.map(l => l.replace(/^[📰🔥💎]\s*\w+:\s*/, '').replace(/\[|\]/g, '').trim()).join('. ')
                     : fullCopy.slice(0, 300);
 
                 // ══════════════════════════════════════════════════════════════
@@ -258,7 +344,7 @@ Format EXACTLY as:
                 push({
                     stage: 'complete',
                     totalTokens: copyTokens + refineTokens,
-                    data: { vibeData, marketingCopy: fullCopy, upgradedHooks, voiceText },
+                    data: { vibeData, marketingCopy: fullCopy, upgradedHooks, voiceText, profitData },
                 });
 
             } catch (error) {

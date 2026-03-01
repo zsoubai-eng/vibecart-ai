@@ -1260,3 +1260,271 @@ main {
         box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
     }
 }
+
+/* ══════════════════════════════════════════════════════════
+   POWER-UP 1: TRENDING PRODUCTS (from AI_Shorts_Project)
+   ══════════════════════════════════════════════════════════ */
+
+.btn-trending {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.55rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.06);
+    color: #f59e0b;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    margin-top: 0.6rem;
+}
+
+.btn-trending:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-trending:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.trending-grid {
+    width: 100%;
+    margin-top: 0.8rem;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.trending-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.9rem;
+    background: rgba(245, 158, 11, 0.07);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #f59e0b;
+}
+
+.trending-header span {
+    flex: 1;
+}
+
+.trending-refresh {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: transparent;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 6px;
+    color: #f59e0b;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.trending-refresh:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.trending-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease;
+    font-family: inherit;
+}
+
+.trending-item:last-child {
+    border-bottom: none;
+}
+
+.trending-item:hover {
+    background: rgba(139, 92, 246, 0.08);
+}
+
+.trending-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.trending-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.trending-item-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0.2rem;
+}
+
+.trending-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.trending-source {
+    font-size: 0.7rem;
+    color: #f59e0b;
+    font-weight: 500;
+}
+
+.trending-category {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   POWER-UP 2: DROPSHIP PROFIT ENGINE (from dropship-intelligence)
+   ══════════════════════════════════════════════════════════ */
+
+.profit-card {
+    background: rgba(16, 185, 129, 0.04);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 20px;
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.profit-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.profit-card-header>div:nth-child(2) {
+    flex: 1;
+}
+
+.profit-card-header h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+    letter-spacing: -0.02em;
+}
+
+.profit-card-header span {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.profit-verdict {
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: -0.01em;
+}
+
+.profit-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.profit-metric {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    text-align: center;
+}
+
+.profit-metric-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.4rem;
+}
+
+.profit-metric-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1;
+}
+
+.profit-rationale {
+    font-size: 0.83rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    line-height: 1.5;
+    margin-bottom: 0.85rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border-left: 2px solid rgba(16, 185, 129, 0.3);
+}
+
+.profit-platforms {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.profit-platform-label {
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profit-platform-tag {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #10b981;
+}
+
+@media (max-width: 640px) {
+    .profit-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
