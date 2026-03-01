@@ -2,9 +2,9 @@
 
 import { useState, useRef } from 'react';
 import {
-  Camera, Sparkles, Zap, Brain, Mic, Loader2,
+  Camera, Sparkles, Zap, Brain, Loader2,
   Volume2, VolumeX, CheckCircle, Package,
-  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp
+  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film
 } from 'lucide-react';
 import './globals.css';
 
@@ -47,7 +47,9 @@ export default function Home() {
   const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [scriptLoading, setScriptLoading] = useState(false);
   const [results, setResults] = useState<Results | null>(null);
+  const [videoScript, setVideoScript] = useState('');
   const [error, setError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewImg, setPreviewImg] = useState('');
@@ -107,6 +109,28 @@ export default function Home() {
   const stopVoice = () => {
     audioRef.current?.pause();
     setIsPlaying(false);
+  };
+
+  const generateScript = async () => {
+    if (!results) return;
+    setScriptLoading(true);
+    try {
+      const response = await fetch('/api/script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vibeData: results.vibeData,
+          marketingCopy: results.marketingCopy,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setVideoScript(data.script);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Script generation failed');
+    } finally {
+      setScriptLoading(false);
+    }
   };
 
   const vibeScore = results?.vibeData?.vibeScore ?? 0;
@@ -399,6 +423,37 @@ export default function Home() {
                   }}
                 />
               </div>
+            </div>
+
+            {/* VIDEO SCRIPT SECTION */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              {!videoScript ? (
+                <button
+                  className="btn-script"
+                  onClick={generateScript}
+                  disabled={scriptLoading}
+                >
+                  {scriptLoading ? (
+                    <><Loader2 size={18} className="spinner" /> Writing your 30-second video script…</>
+                  ) : (
+                    <><Film size={18} /> Generate 30-Second TikTok/Reels Video Script</>
+                  )}
+                </button>
+              ) : (
+                <div className="script-card">
+                  <div className="result-card-header" style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+                    <div className="result-icon"><Film size={17} color="#ec4899" /></div>
+                    <div>
+                      <h3 style={{ color: 'var(--text)', fontSize: '0.9rem', fontWeight: 700 }}>🎬 30-Second Video Script</h3>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Mistral Large 3 — Shot-by-shot director notes</span>
+                    </div>
+                  </div>
+                  <div
+                    className="result-content script-content"
+                    dangerouslySetInnerHTML={{ __html: formatMarkdown(videoScript) }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* TRY AGAIN */}
