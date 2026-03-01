@@ -1,22 +1,20 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   Camera, Sparkles, Zap, Brain, Loader2,
   Volume2, VolumeX, CheckCircle, Package,
-  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film
+  Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film, Eye
 } from 'lucide-react';
 import './globals.css';
 
+// ── Types ─────────────────────────────────────────────────────────
+type StageStatus = 'idle' | 'running' | 'streaming' | 'done' | 'error';
+
 interface VibeData {
-  aesthetic: string;
-  mood: string;
-  keywords: string[];
-  demographic: string;
-  emotion: string;
-  vibeScore: number;
-  palette: string[];
-  category: string;
+  aesthetic: string; mood: string; keywords: string[];
+  demographic: string; emotion: string; vibeScore: number;
+  palette: string[]; category: string;
 }
 
 interface Results {
@@ -26,13 +24,19 @@ interface Results {
   voiceText: string;
 }
 
+interface PipelineState {
+  vision: StageStatus;
+  copy: StageStatus;
+  refine: StageStatus;
+  complete: boolean;
+  totalTokens: number;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
 function parseSection(text: string, heading: string): string {
-  // Match ### headings that contain the keyword anywhere (handles emojis too)
   const regex = new RegExp(`###[^\n]*${heading}[^\n]*\n([\s\S]*?)(?=###|$)`, 'i');
   const match = text.match(regex);
-  if (!match) return '';
-  // Clean up the result — remove leading/trailing blank lines
-  return match[1].trim();
+  return match ? match[1].trim() : '';
 }
 
 function formatMarkdown(text: string) {
@@ -46,6 +50,59 @@ function formatMarkdown(text: string) {
     .replace(/\n/g, '<br/>');
 }
 
+// ── Pipeline Stage Component ──────────────────────────────────────
+function PipelineStage({
+  number, icon, label, sublabel, status, streamText,
+}: {
+  number: number; icon: string; label: string; sublabel: string;
+  status: StageStatus; streamText?: string;
+}) {
+  const statusIcon = {
+    idle: <span className="stage-dot stage-dot-idle" />,
+    running: <span className="stage-dot stage-dot-pulse" />,
+    streaming: <span className="stage-dot stage-dot-stream" />,
+    done: <CheckCircle size={14} color="#10b981" />,
+    error: <span className="stage-dot stage-dot-error" />,
+  }[status];
+
+  const statusLabel = {
+    idle: 'Queue',
+    running: 'Running…',
+    streaming: 'Generating…',
+    done: 'Done',
+    error: 'Error',
+  }[status];
+
+  const isActive = status === 'running' || status === 'streaming';
+  const isDone = status === 'done';
+
+  return (
+    <div className={`pipeline-stage ${isActive ? 'pipeline-stage-active' : ''} ${isDone ? 'pipeline-stage-done' : ''}`}>
+      <div className="pipeline-stage-header">
+        <div className="pipeline-step-num">{number}</div>
+        <span className="pipeline-icon">{icon}</span>
+        <div className="pipeline-stage-info">
+          <div className="pipeline-stage-label">{label}</div>
+          <div className="pipeline-stage-sublabel">{sublabel}</div>
+        </div>
+        <div className="pipeline-stage-status">
+          {statusIcon}
+          <span className="pipeline-status-text" style={{
+            color: isDone ? '#10b981' : isActive ? '#a78bfa' : '#52525b'
+          }}>{statusLabel}</span>
+        </div>
+      </div>
+      {streamText && (status === 'streaming' || status === 'done') && (
+        <div className="pipeline-stream-text">
+          {streamText.slice(-300)}
+          {status === 'streaming' && <span className="cursor-blink">▋</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────
 export default function Home() {
   const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,31 +113,110 @@ export default function Home() {
   const [error, setError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewImg, setPreviewImg] = useState('');
+  const [streamCopy, setStreamCopy] = useState('');
+  const [streamRefine, setStreamRefine] = useState('');
+  const [vibePreview, setVibePreview] = useState<VibeData | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineState>({
+    vision: 'idle', copy: 'idle', refine: 'idle', complete: false, totalTokens: 0,
+  });
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // ── SSE Event Handler ─────────────────────────────────────────
+  const handlePipelineEvent = useCallback((event: {
+    stage: string; status?: string; data?: VibeData | Results;
+    chunk?: string; tokens?: number; totalTokens?: number; error?: string;
+    message?: string;
+  }) => {
+    switch (event.stage) {
+      case 'vision':
+        if (event.status === 'running') {
+          setPipeline(p => ({ ...p, vision: 'running' }));
+        } else if (event.status === 'done') {
+          setVibePreview(event.data as VibeData);
+          setPipeline(p => ({ ...p, vision: 'done' }));
+        }
+        break;
+      case 'copy':
+        if (event.status === 'running') setPipeline(p => ({ ...p, copy: 'running' }));
+        if (event.status === 'streaming') setStreamCopy(prev => prev + (event.chunk || ''));
+        if (event.status === 'done') setPipeline(p => ({ ...p, copy: 'done' }));
+        break;
+      case 'refine':
+        if (event.status === 'running') setPipeline(p => ({ ...p, refine: 'running' }));
+        if (event.status === 'streaming') setStreamRefine(prev => prev + (event.chunk || ''));
+        if (event.status === 'done') setPipeline(p => ({ ...p, refine: 'done' }));
+        break;
+      case 'complete': {
+        const resultData = event.data as Results;
+        setResults(resultData);
+        setPipeline(p => ({ ...p, complete: true, totalTokens: event.totalTokens || 0 }));
+        setLoading(false);
+        break;
+      }
+      case 'error':
+        setError(event.error || 'Unknown error');
+        setLoading(false);
+        setPipeline(p => ({
+          ...p,
+          vision: p.vision === 'running' ? 'error' : p.vision,
+          copy: p.copy === 'running' ? 'error' : p.copy,
+          refine: p.refine === 'running' ? 'error' : p.refine,
+        }));
+        break;
+    }
+  }, []);
+
+  // ── Streaming Analyze ─────────────────────────────────────────
   const scanVibe = async () => {
     if (!imageUrl) return;
     setLoading(true);
     setError('');
     setResults(null);
+    setVideoScript('');
+    setStreamCopy('');
+    setStreamRefine('');
+    setVibePreview(null);
     setPreviewImg(imageUrl);
+    setPipeline({ vision: 'idle', copy: 'idle', refine: 'idle', complete: false, totalTokens: 0 });
 
     try {
-      const response = await fetch('/api/analyze', {
+      const response = await fetch('/api/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to analyze image');
-      setResults(data);
+
+      if (!response.body) throw new Error('No response stream');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              handlePipelineEvent(event);
+            } catch { /* skip malformed */ }
+          }
+        }
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Stream failed');
       setLoading(false);
     }
   };
 
+  // ── Voice ─────────────────────────────────────────────────────
   const generateVoice = async () => {
     if (!results?.voiceText) return;
     setVoiceLoading(true);
@@ -92,12 +228,8 @@ export default function Home() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-
-      const audioSrc = `data:${data.mimeType};base64,${data.audio}`;
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audio = new Audio(audioSrc);
+      const audio = new Audio(`data:${data.mimeType};base64,${data.audio}`);
+      audioRef.current?.pause();
       audioRef.current = audio;
       audio.onended = () => setIsPlaying(false);
       audio.play();
@@ -109,11 +241,9 @@ export default function Home() {
     }
   };
 
-  const stopVoice = () => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-  };
+  const stopVoice = () => { audioRef.current?.pause(); setIsPlaying(false); };
 
+  // ── Video Script ──────────────────────────────────────────────
   const generateScript = async () => {
     if (!results) return;
     setScriptLoading(true);
@@ -121,10 +251,7 @@ export default function Home() {
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vibeData: results.vibeData,
-          marketingCopy: results.marketingCopy,
-        }),
+        body: JSON.stringify({ vibeData: results.vibeData, marketingCopy: results.marketingCopy }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -136,8 +263,9 @@ export default function Home() {
     }
   };
 
-  const vibeScore = results?.vibeData?.vibeScore ?? 0;
+  const vibeScore = results?.vibeData?.vibeScore ?? vibePreview?.vibeScore ?? 0;
   const scoreColor = vibeScore >= 80 ? '#10b981' : vibeScore >= 60 ? '#f59e0b' : '#ef4444';
+  const activePipeline = loading || (pipeline.vision !== 'idle' && !pipeline.complete);
 
   return (
     <>
@@ -159,7 +287,7 @@ export default function Home() {
         <section className="hero">
           <div className="hero-eyebrow">
             <Sparkles size={12} />
-            3 AI Models · 6 Platforms · Real-time Voice
+            3 AI Models · 6 Platforms · Real-time Streaming · Voice
           </div>
           <h1>
             Raw image.<br />
@@ -167,7 +295,7 @@ export default function Home() {
           </h1>
           <p>
             Drop any product image. Three chained Mistral models extract its brand DNA,
-            write copy for 6 platforms, refine it for virality — then ElevenLabs voices it.
+            stream copy for 6 platforms, self-refine it for virality — then ElevenLabs voices it.
           </p>
 
           {/* INPUT CARD */}
@@ -191,12 +319,12 @@ export default function Home() {
                 placeholder="https://example.com/product-image.jpg"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && scanVibe()}
+                onKeyDown={(e) => e.key === 'Enter' && !loading && scanVibe()}
               />
             </div>
             <button className="btn-primary" onClick={scanVibe} disabled={loading || !imageUrl}>
               {loading ? (
-                <><Loader2 size={18} className="spinner" /> Running 3-model AI pipeline…</>
+                <><Loader2 size={18} className="spinner" /> Streaming AI pipeline…</>
               ) : (
                 <><Sparkles size={18} /> Generate Full Brand Suite</>
               )}
@@ -205,11 +333,12 @@ export default function Home() {
           </div>
 
           {/* STATS */}
-          {!results && (
+          {!results && !loading && (
             <div className="stats-row">
               {[
                 { value: '3', label: 'AI Models Chained' },
                 { value: '6', label: 'Platforms Generated' },
+                { value: '⚡', label: 'Real-time Streaming' },
                 { value: '🎤', label: 'ElevenLabs Voice' },
               ].map((s, i) => (
                 <div className="stat" key={i}>
@@ -221,26 +350,63 @@ export default function Home() {
           )}
         </section>
 
+        {/* ── LIVE PIPELINE PANEL ── */}
+        {activePipeline && (
+          <section className="pipeline-section">
+            <div className="pipeline-panel">
+              <div className="pipeline-header">
+                <div className="pipeline-title">
+                  <Eye size={16} color="#a78bfa" />
+                  Live AI Pipeline
+                </div>
+                <div className="pipeline-meta">
+                  {pipeline.totalTokens > 0 && (
+                    <span className="token-count">{pipeline.totalTokens.toLocaleString()} tokens</span>
+                  )}
+                  <span className="pipeline-pulse" />
+                </div>
+              </div>
+
+              <div className="pipeline-stages">
+                <PipelineStage
+                  number={1} icon="🔬" label="Pixtral Large" sublabel="Visual DNA · structured JSON extraction"
+                  status={pipeline.vision}
+                  streamText={vibePreview ? `Vibe: ${vibePreview.vibeScore}/100 · ${vibePreview.mood} · ${vibePreview.keywords?.slice(0, 3).join(', ')}` : undefined}
+                />
+                <PipelineStage
+                  number={2} icon="✍️" label="Mistral Large" sublabel="6-platform copy suite · streaming tokens"
+                  status={pipeline.copy}
+                  streamText={streamCopy}
+                />
+                <PipelineStage
+                  number={3} icon="🎯" label="Creative Director" sublabel="Self-refinement loop · viral hook upgrade"
+                  status={pipeline.refine}
+                  streamText={streamRefine}
+                />
+                <PipelineStage
+                  number={4} icon="🎤" label="ElevenLabs" sublabel="Premium voice synthesis · Rachel model"
+                  status={results ? 'done' : 'idle'}
+                />
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* ── RESULTS ── */}
         {results && (
           <section className="results-section">
-
             {/* VIBE SCORE BAR */}
             <div className="vibe-score-card">
               <div className="vibe-score-left">
                 <div className="vibe-score-label">Vibe Score</div>
                 <div className="vibe-score-number" style={{ color: scoreColor }}>
-                  {results.vibeData.vibeScore}
-                  <span>/100</span>
+                  {results.vibeData.vibeScore}<span>/100</span>
                 </div>
                 <div className="vibe-mood">{results.vibeData.mood}</div>
               </div>
               <div className="vibe-score-center">
                 <div className="vibe-bar-bg">
-                  <div
-                    className="vibe-bar-fill"
-                    style={{ width: `${results.vibeData.vibeScore}%`, background: scoreColor }}
-                  />
+                  <div className="vibe-bar-fill" style={{ width: `${results.vibeData.vibeScore}%`, background: scoreColor }} />
                 </div>
                 <div className="vibe-keywords">
                   {results.vibeData.keywords?.map((k, i) => (
@@ -252,12 +418,7 @@ export default function Home() {
                 <div className="palette-label">Brand Palette</div>
                 <div className="palette-chips">
                   {results.vibeData.palette?.map((color, i) => (
-                    <div
-                      key={i}
-                      className="palette-chip"
-                      style={{ background: color }}
-                      title={color}
-                    />
+                    <div key={i} className="palette-chip" style={{ background: color }} title={color} />
                   ))}
                 </div>
                 <div className="palette-hex">
@@ -267,6 +428,17 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* TOKEN STATS */}
+            {pipeline.totalTokens > 0 && (
+              <div className="token-stats-bar">
+                <Sparkles size={13} color="#a78bfa" />
+                <span><strong>{pipeline.totalTokens.toLocaleString()}</strong> tokens generated across 3 Mistral model calls</span>
+                <span className="token-stat-pill">Pixtral ✓</span>
+                <span className="token-stat-pill">Large ×2 ✓</span>
+                <span className="token-stat-pill">Self-refined ✓</span>
+              </div>
+            )}
 
             {/* VOICE BANNER */}
             <div className="voice-banner">
@@ -284,11 +456,7 @@ export default function Home() {
                   </button>
                 ) : (
                   <button className="btn-voice-play" onClick={generateVoice} disabled={voiceLoading}>
-                    {voiceLoading ? (
-                      <><Loader2 size={16} className="spinner" /> Generating…</>
-                    ) : (
-                      <><Volume2 size={16} /> Play Voiceover</>
-                    )}
+                    {voiceLoading ? <><Loader2 size={16} className="spinner" /> Generating…</> : <><Volume2 size={16} /> Play Voiceover</>}
                   </button>
                 )}
               </div>
@@ -330,10 +498,7 @@ export default function Home() {
                     <span>Self-refined by Mistral Creative Director</span>
                   </div>
                 </div>
-                <div
-                  className="result-content"
-                  dangerouslySetInnerHTML={{ __html: formatMarkdown(results.upgradedHooks || '') }}
-                />
+                <div className="result-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(results.upgradedHooks || '') }} />
               </div>
             </div>
 
@@ -343,99 +508,36 @@ export default function Home() {
               6-Platform Copy Suite
             </div>
             <div className="platform-grid">
-              {/* Amazon */}
               <div className="platform-card">
-                <div className="platform-header">
-                  <ShoppingCart size={16} color="#f59e0b" />
-                  <span>Amazon Listing</span>
-                </div>
-                <div
-                  className="platform-content"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Amazon')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><ShoppingCart size={16} color="#f59e0b" /><span>Amazon Listing</span></div>
+                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Amazon')) || '<em>See full copy below</em>' }} />
               </div>
-
-              {/* Vibe Description */}
               <div className="platform-card">
-                <div className="platform-header">
-                  <Package size={16} color="#8b5cf6" />
-                  <span>Vibe Description</span>
-                </div>
-                <div
-                  className="platform-content"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Vibe Description')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><Package size={16} color="#8b5cf6" /><span>Vibe Description</span></div>
+                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Vibe Description')) || '<em>See full copy below</em>' }} />
               </div>
-
-              {/* Instagram */}
               <div className="platform-card">
-                <div className="platform-header">
-                  <Instagram size={16} color="#ec4899" />
-                  <span>Instagram Caption</span>
-                </div>
-                <div
-                  className="platform-content"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Instagram')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><Instagram size={16} color="#ec4899" /><span>Instagram Caption</span></div>
+                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Instagram')) || '<em>See full copy below</em>' }} />
               </div>
-
-              {/* Facebook */}
               <div className="platform-card">
-                <div className="platform-header">
-                  <Target size={16} color="#3b82f6" />
-                  <span>Facebook Ad</span>
-                </div>
-                <div
-                  className="platform-content"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Facebook')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><Target size={16} color="#3b82f6" /><span>Facebook Ad</span></div>
+                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Facebook')) || '<em>See full copy below</em>' }} />
               </div>
-
-              {/* Brand Name */}
               <div className="platform-card platform-brand">
-                <div className="platform-header">
-                  <Lightbulb size={16} color="#10b981" />
-                  <span>Brand Name</span>
-                </div>
-                <div
-                  className="platform-content brand-name-text"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Brand Name')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><Lightbulb size={16} color="#10b981" /><span>Brand Name</span></div>
+                <div className="platform-content brand-name-text" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Brand Name')) || '<em>See full copy below</em>' }} />
               </div>
-
-              {/* UVP */}
               <div className="platform-card">
-                <div className="platform-header">
-                  <CheckCircle size={16} color="#06b6d4" />
-                  <span>Unique Selling Point</span>
-                </div>
-                <div
-                  className="platform-content"
-                  dangerouslySetInnerHTML={{
-                    __html: formatMarkdown(parseSection(results.marketingCopy, 'Unique Selling')) || '<em>See full copy below</em>'
-                  }}
-                />
+                <div className="platform-header"><CheckCircle size={16} color="#06b6d4" /><span>Unique Selling Point</span></div>
+                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Unique Selling')) || '<em>See full copy below</em>' }} />
               </div>
             </div>
 
-            {/* VIDEO SCRIPT SECTION */}
+            {/* VIDEO SCRIPT */}
             <div style={{ marginBottom: '1.25rem' }}>
               {!videoScript ? (
-                <button
-                  className="btn-script"
-                  onClick={generateScript}
-                  disabled={scriptLoading}
-                >
+                <button className="btn-script" onClick={generateScript} disabled={scriptLoading}>
                   {scriptLoading ? (
                     <><Loader2 size={18} className="spinner" /> Writing your 30-second video script…</>
                   ) : (
@@ -451,10 +553,7 @@ export default function Home() {
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Mistral Large 3 — Shot-by-shot director notes</span>
                     </div>
                   </div>
-                  <div
-                    className="result-content script-content"
-                    dangerouslySetInnerHTML={{ __html: formatMarkdown(videoScript) }}
-                  />
+                  <div className="result-content script-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(videoScript) }} />
                 </div>
               )}
             </div>
@@ -467,13 +566,13 @@ export default function Home() {
           </section>
         )}
 
-        {/* HOW IT WORKS — only shown before any results */}
+        {/* HOW IT WORKS */}
         {!results && !loading && (
           <section style={{ maxWidth: 960, margin: '3rem auto 0', padding: '0 2rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
               {[
-                { icon: '🔬', title: 'Pixtral Extracts Brand DNA', desc: 'Our vision model reads color, texture, lighting, and vibe — outputting a structured brand identity + vibe score.' },
-                { icon: '✍️', title: 'Mistral Large Writes Copy × 2', desc: 'First call generates 6-platform copy. Second call acts as a creative director and self-refines the viral hooks.' },
+                { icon: '🔬', title: 'Pixtral Extracts Brand DNA', desc: 'Structured JSON extraction: vibe score, color palette, demographics, mood keywords — from a single image.' },
+                { icon: '✍️', title: 'Mistral Large Streams Copy ×2', desc: 'Token-by-token streaming for 6 platforms. A second call acts as a creative director and self-refines the viral hooks.' },
                 { icon: '🎤', title: 'ElevenLabs Voices the Hooks', desc: 'The AI-refined hooks are voiced by a premium ElevenLabs model — ready to drop into your next TikTok reel.' },
               ].map((step, i) => (
                 <div key={i} className="result-card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
