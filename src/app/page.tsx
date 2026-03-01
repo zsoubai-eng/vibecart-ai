@@ -27,9 +27,12 @@ interface Results {
 }
 
 function parseSection(text: string, heading: string): string {
-  const regex = new RegExp(`###\\s*[^\\n]*${heading}[^\\n]*\\n([\\s\\S]*?)(?=###|$)`, 'i');
+  // Match ### headings that contain the keyword anywhere (handles emojis too)
+  const regex = new RegExp(`###[^\n]*${heading}[^\n]*\n([\s\S]*?)(?=###|$)`, 'i');
   const match = text.match(regex);
-  return match ? match[1].trim() : '';
+  if (!match) return '';
+  // Clean up the result — remove leading/trailing blank lines
+  return match[1].trim();
 }
 
 function formatMarkdown(text: string) {
