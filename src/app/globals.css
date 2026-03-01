@@ -1528,3 +1528,49 @@ main {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* ══════════════════════════════════════════════════════════
+   VOXTRAL FALLBACK TEXTAREA
+   ══════════════════════════════════════════════════════════ */
+
+.voxtral-fallback {
+    width: 100%;
+    margin-top: 0.75rem;
+    animation: fadeIn 0.3s ease;
+}
+
+.voxtral-fallback-label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #f59e0b;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.voxtral-fallback-input {
+    width: 100%;
+    background: rgba(245, 158, 11, 0.04);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    color: var(--text);
+    font-size: 0.88rem;
+    font-family: inherit;
+    resize: vertical;
+    line-height: 1.5;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.voxtral-fallback-input:focus {
+    outline: none;
+    border-color: rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.08);
+}
+
+.voxtral-fallback-input::placeholder {
+    color: #52525b;
+    font-style: italic;
+}

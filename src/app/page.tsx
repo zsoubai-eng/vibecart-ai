@@ -187,6 +187,8 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [transcribing, setTranscribing] = useState(false);
+  const [voxtralFallback, setVoxtralFallback] = useState(false);
+  const [manualDescription, setManualDescription] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   // ── Trending Products ───────────────────────────────────────────
@@ -289,24 +291,39 @@ export default function Home() {
 
   const transcribeBlob = async (blob: Blob, mimeType: string) => {
     setTranscribing(true);
+    setVoxtralFallback(false);
     try {
       const formData = new FormData();
       formData.append('audio', blob, `recording.${mimeType.includes('webm') ? 'webm' : 'mp4'}`);
       const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.transcript) setTranscript(data.transcript);
-      else throw new Error(data.error || 'Transcription failed');
+      if (data.transcript) {
+        setTranscript(data.transcript);
+        setVoxtralFallback(false);
+      } else if (data.fallback) {
+        // Voxtral model not yet available — show manual text input
+        setVoxtralFallback(true);
+        setError('');
+      } else {
+        throw new Error(data.error || 'Transcription failed');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Voxtral transcription failed');
+      // If network/server error, also show fallback
+      setVoxtralFallback(true);
+      setError('');
+      console.warn('Voxtral transcription error:', err);
     } finally {
       setTranscribing(false);
     }
   };
 
+  // Use manual description as transcript when Voxtral is unavailable
+  const effectiveTranscript = voxtralFallback ? manualDescription : transcript;
+
   // ── Streaming Analyze ─────────────────────────────────────────
   const scanVibe = async () => {
     const hasUrl = inputMode === 'url' && imageUrl;
-    const hasVoice = inputMode === 'voice' && transcript;
+    const hasVoice = inputMode === 'voice' && effectiveTranscript;
     if (!hasUrl && !hasVoice) return;
     setLoading(true);
     setError('');
@@ -325,7 +342,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageUrl: inputMode === 'url' ? imageUrl : '',
-          productDescription: inputMode === 'voice' ? transcript : undefined,
+          productDescription: inputMode === 'voice' ? effectiveTranscript : undefined,
         }),
       });
 
@@ -564,16 +581,30 @@ export default function Home() {
                   {isRecording ? (
                     <><MicOff size={18} /> Stop Recording</>
                   ) : (
-                    <><Mic size={18} /> {transcript ? 'Re-record' : 'Start Recording'}</>
+                    <><Mic size={18} /> {(transcript || manualDescription) ? 'Re-record' : 'Start Recording'}</>
                   )}
                 </button>
+
+                {/* VOXTRAL FALLBACK: manual text input when API is unavailable */}
+                {voxtralFallback && !isRecording && (
+                  <div className="voxtral-fallback">
+                    <div className="voxtral-fallback-label">⚠️ Voxtral transcription unavailable — type your description below:</div>
+                    <textarea
+                      className="voxtral-fallback-input"
+                      placeholder='Example: "A luxury black watch with gold details, minimalist packaging, targeting young professionals"'
+                      value={manualDescription}
+                      onChange={(e) => setManualDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                )}
               </>
             )}
 
             <button
               className="btn-primary"
               onClick={scanVibe}
-              disabled={loading || (inputMode === 'url' ? !imageUrl : !transcript)}
+              disabled={loading || (inputMode === 'url' ? !imageUrl : !effectiveTranscript)}
               style={{ marginTop: inputMode === 'voice' ? '0.75rem' : undefined }}
             >
               {loading ? (
