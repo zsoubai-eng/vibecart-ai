@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     if (!imageUrl) {
         return new Response(
-            sseEvent({ stage: 'error', error: 'Image URL is required' }),
+            `data: ${JSON.stringify({ stage: 'error', error: 'Image URL is required' })}\n\n`,
             { status: 400, headers: { 'Content-Type': 'text/event-stream' } }
         );
     }
@@ -70,17 +70,11 @@ export async function POST(request: NextRequest) {
                     process.env.MISTRAL_API_KEY,
                 ].filter(Boolean) as string[];
 
-                if (!keys.length) throw new Error('No API keys configured');
+                if (!keys.length) throw new Error('No API keys configured. Set MISTRAL_API_KEY in .env.local');
 
-                // Try keys in order — use first that succeeds
-                let client: Mistral | null = null;
-                for (const key of keys) {
-                    try {
-                        client = new Mistral({ apiKey: key });
-                        break;
-                    } catch { continue; }
-                }
-                if (!client) throw new Error('Failed to initialize Mistral client');
+                // Use first available key — Mistral client instantiation always succeeds
+                const client = new Mistral({ apiKey: keys[0] });
+                console.log(`[stream] Using key: ${keys[0]?.slice(0, 8)}...`);
 
                 // ══════════════════════════════════════════════════════════
                 // STAGE 1 — Pixtral Large Vision (Structured JSON output)
@@ -89,36 +83,40 @@ export async function POST(request: NextRequest) {
 
                 const vibeResponse = await client.chat.complete({
                     model: 'pixtral-large-latest',
-                    responseFormat: { type: 'json_object' }, // Force structured extraction
                     messages: [
                         {
                             role: 'user',
                             content: [
                                 {
                                     type: 'text',
-                                    text: `You are an elite brand strategist and visual psychologist with 20 years of experience at LVMH, Nike, and Apple.
+                                    text: `You are an elite brand strategist and visual psychologist.
 
-Analyze this product image with extreme precision. Return ONLY a valid JSON object with this exact schema:
+Analyze this product image in extreme detail. Return ONLY a valid JSON object:
 {
   "aesthetic": "One precise sentence describing the dominant visual aesthetic",
   "mood": "Single evocative word (e.g. Luxurious, Fierce, Cozy, Minimal, Playful)",
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-  "demographic": "One sentence: age range, lifestyle, core values, buying behavior",
+  "demographic": "One sentence about the target buyer: age, lifestyle, values",
   "emotion": "Three comma-separated emotions this product evokes",
   "vibeScore": 88,
-  "palette": ["#HEXCOLOR1", "#HEXCOLOR2", "#HEXCOLOR3", "#HEXCOLOR4"],
+  "palette": ["#000000", "#FFFFFF", "#AABBCC", "#DDEEFF"],
   "category": "Two-word product category"
 }
 
-vibeScore (0-100): raw commercial marketability based on visual appeal, trend alignment, shelf presence, and emotional resonance.
-palette: 4 hex colors extracted from or inspired by the product for brand identity use.
-Return ONLY the JSON. No explanation. No markdown fences.`,
+vibeScore (0-100): commercial marketability score.
+palette: 4 real hex codes matching or complementing the product.
+Return ONLY the JSON object. No markdown, no explanation.`,
                                 },
-                                { type: 'image_url', imageUrl },
+                                {
+                                    // Mistral Pixtral image format
+                                    type: 'image_url',
+                                    imageUrl: { url: imageUrl },
+                                } as { type: 'image_url'; imageUrl: { url: string } },
                             ],
                         },
                     ],
                 });
+                console.log('[stream] Pixtral response received');
 
                 // Parse structured JSON (with fallback)
                 type VibeData = {

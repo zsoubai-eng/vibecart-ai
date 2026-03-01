@@ -31,7 +31,7 @@ The vibeScore (0-100) measures raw commercial marketability based on visual appe
 The palette should be 4 hex colors that visually complement this product's aesthetic for branding.
 Return ONLY the JSON, no other text.`,
                     },
-                    { type: 'image_url', imageUrl: imageUrl },
+                    { type: 'image_url', imageUrl: { url: imageUrl } } as { type: 'image_url'; imageUrl: { url: string } },
                 ],
             },
         ],
