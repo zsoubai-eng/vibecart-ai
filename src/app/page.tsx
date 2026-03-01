@@ -340,14 +340,14 @@ export default function Home() {
         <section className="hero">
           <div className="hero-eyebrow">
             <Sparkles size={12} />
-            3 AI Models · 6 Platforms · Real-time Streaming · Voice
+            4 AI Models · 6 Platforms · Real-time Streaming · Voice
           </div>
           <h1>
             Raw image.<br />
             <span className="accent">Viral brand.</span>
           </h1>
           <p>
-            Drop any product image. Three chained Mistral models extract its brand DNA,
+            Drop any product image <em>or describe it by voice</em>. Four chained Mistral models extract its brand DNA,
             stream copy for 6 platforms, self-refine it for virality — then ElevenLabs voices it.
           </p>
 
@@ -455,7 +455,7 @@ export default function Home() {
           {!results && !loading && (
             <div className="stats-row">
               {[
-                { value: '3', label: 'AI Models Chained' },
+                { value: '4', label: 'AI Models Chained' },
                 { value: '6', label: 'Platforms Generated' },
                 { value: '⚡', label: 'Real-time Streaming' },
                 { value: '🎤', label: 'ElevenLabs Voice' },
