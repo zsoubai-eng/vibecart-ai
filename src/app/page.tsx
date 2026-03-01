@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Camera, Sparkles, Zap, Brain, Loader2,
   Volume2, VolumeX, CheckCircle, Package,
   Instagram, ShoppingCart, Target, Lightbulb, TrendingUp, Film, Eye,
-  Mic, MicOff, Link, DollarSign, BarChart2, RefreshCw, Flame
+  Mic, MicOff, Link, DollarSign, BarChart2, RefreshCw, Flame, Copy, Check
 } from 'lucide-react';
 import './globals.css';
 
@@ -197,6 +197,17 @@ export default function Home() {
   const [showTrending, setShowTrending] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // ── Copy to Clipboard ─────────────────────────────────────────
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = (text: string, key: string) => {
+    // Strip HTML tags for plain text copy
+    const plain = text.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
+    navigator.clipboard.writeText(plain).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    });
+  };
 
   // ── Load Trending on Mount ────────────────────────────────────
   useEffect(() => {
@@ -800,33 +811,48 @@ export default function Home() {
               6-Platform Copy Suite · 3 Hook Styles
             </div>
             <div className="platform-grid">
-              <div className="platform-card">
-                <div className="platform-header"><ShoppingCart size={16} color="#f59e0b" /><span>Amazon Listing</span></div>
-                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Amazon')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card">
-                <div className="platform-header"><Package size={16} color="#8b5cf6" /><span>Vibe Description</span></div>
-                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Vibe Description')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card" style={{ gridColumn: '1 / -1' }}>
-                <div className="platform-header"><BarChart2 size={16} color="#ec4899" /><span>🎣 TikTok Hooks — 3 Styles</span></div>
+              {/* Helper: copy button per card */}
+              {([
+                { key: 'amazon', icon: <ShoppingCart size={16} color="#f59e0b" />, label: 'Amazon Listing', section: 'Amazon' },
+                { key: 'vibe', icon: <Package size={16} color="#8b5cf6" />, label: 'Vibe Description', section: 'Vibe Description' },
+                { key: 'instagram', icon: <Instagram size={16} color="#ec4899" />, label: 'Instagram Caption', section: 'Instagram' },
+                { key: 'facebook', icon: <Target size={16} color="#3b82f6" />, label: 'Facebook Ad', section: 'Facebook' },
+                { key: 'brand', icon: <Lightbulb size={16} color="#10b981" />, label: 'Brand Name', section: 'Brand Name' },
+                { key: 'usp', icon: <CheckCircle size={16} color="#06b6d4" />, label: 'Unique Selling Point', section: 'Unique Selling' },
+              ] as Array<{ key: string; icon: React.ReactNode; label: string; section: string }>).map(({ key, icon, label, section }) => {
+                const rawText = parseSection(results.marketingCopy, section);
+                return (
+                  <div key={key} className={`platform-card${key === 'brand' ? ' platform-brand' : ''}`}>
+                    <div className="platform-header">
+                      {icon}<span>{label}</span>
+                      <button
+                        className="btn-copy"
+                        onClick={() => copyToClipboard(rawText, key)}
+                        title="Copy to clipboard"
+                      >
+                        {copiedKey === key ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <div
+                      className={`platform-content${key === 'brand' ? ' brand-name-text' : ''}`}
+                      dangerouslySetInnerHTML={{ __html: formatMarkdown(rawText) || '<em>See full copy below</em>' }}
+                    />
+                  </div>
+                );
+              })}
+              {/* TikTok hooks — full width */}
+              <div className="platform-card platform-card-full">
+                <div className="platform-header">
+                  <BarChart2 size={16} color="#ec4899" /><span>🎣 TikTok Hooks — 3 Styles</span>
+                  <button
+                    className="btn-copy"
+                    onClick={() => copyToClipboard(parseSection(results.marketingCopy, 'TikTok'), 'tiktok')}
+                    title="Copy to clipboard"
+                  >
+                    {copiedKey === 'tiktok' ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                  </button>
+                </div>
                 <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'TikTok')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card">
-                <div className="platform-header"><Instagram size={16} color="#ec4899" /><span>Instagram Caption</span></div>
-                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Instagram')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card">
-                <div className="platform-header"><Target size={16} color="#3b82f6" /><span>Facebook Ad</span></div>
-                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Facebook')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card platform-brand">
-                <div className="platform-header"><Lightbulb size={16} color="#10b981" /><span>Brand Name</span></div>
-                <div className="platform-content brand-name-text" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Brand Name')) || '<em>See full copy below</em>' }} />
-              </div>
-              <div className="platform-card">
-                <div className="platform-header"><CheckCircle size={16} color="#06b6d4" /><span>Unique Selling Point</span></div>
-                <div className="platform-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(parseSection(results.marketingCopy, 'Unique Selling')) || '<em>See full copy below</em>' }} />
               </div>
             </div>
 
@@ -844,10 +870,17 @@ export default function Home() {
                 <div className="script-card">
                   <div className="result-card-header" style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
                     <div className="result-icon"><Film size={17} color="#ec4899" /></div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <h3 style={{ color: 'var(--text)', fontSize: '0.9rem', fontWeight: 700 }}>🎬 30-Second Video Script</h3>
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Mistral Large — Shot-by-shot director notes</span>
                     </div>
+                    <button
+                      className="btn-copy btn-copy-script"
+                      onClick={() => copyToClipboard(videoScript, 'script')}
+                      title="Copy script"
+                    >
+                      {copiedKey === 'script' ? <><Check size={13} color="#10b981" /> Copied!</> : <><Copy size={13} /> Copy Script</>}
+                    </button>
                   </div>
                   <div className="result-content script-content" dangerouslySetInnerHTML={{ __html: formatMarkdown(videoScript) }} />
                 </div>
